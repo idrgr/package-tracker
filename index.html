@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#07080a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="包裹助手">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>包裹助手 - 自动收集</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+/* ============ Reset & Base ============ */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+:root {
+  --canvas: #07080a;
+  --surface-1: #111214;
+  --surface-2: #18191d;
+  --surface-3: #1f2026;
+  --ink: #eef0f4;
+  --ink-muted: #c4cad4;
+  --ink-subtle: #949aa5;
+  --primary: #6e78f2;
+  --primary-hover: #9199ff;
+  --primary-subtle: rgba(110,120,242,0.12);
+  --primary-glow: rgba(110,120,242,0.25);
+  --accent: #f59e0b;
+  --accent-subtle: rgba(245,158,11,0.12);
+  --hairline: #262830;
+  --hairline-light: #2e303a;
+  --inverse-canvas: #ffffff;
+  --success: #34d399;
+  --danger: #ef4444;
+  --warning: #fbbf24;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tab-height: 64px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-glow: 0 0 20px rgba(110,120,242,0.15);
+}
+html, body { height:100%; overflow:hidden; }
+body {
+  font-family: var(--font);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+input, textarea, select, button { font-family:var(--font); font-size:15px; }
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--hairline); border-radius:2px; }
+
+/* ============ App Shell ============ */
+#app {
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  max-width:480px;
+  margin:0 auto;
+  position:relative;
+  overflow:hidden;
+}
+@media (min-width:480px) {
+  #app { border-left:1px solid var(--hairline); border-right:1px solid var(--hairline); }
+}
+
+/* ============ Header ============ */
+.header {
+  position:sticky;
+  top:0;
+  z-index:20;
+  background:rgba(7,8,10,0.85);
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  padding:14px 16px 10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+  min-height:54px;
+  flex-shrink:0;
+}
+.header-title { display:flex; align-items:center; gap:8px; }
+.header-title svg { color:var(--primary); }
+.header h1 { font-size:19px; font-weight:700; letter-spacing:-0.3px; color:var(--ink); }
+.header-actions { display:flex; gap:6px; align-items:center; }
+.header-btn {
+  width:38px; height:38px;
+  border-radius:var(--radius-sm);
+  border:1px solid rgba(255,255,255,0.08);
+  background:rgba(255,255,255,0.04);
+  color:var(--ink-muted);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  transition:all 0.2s;
+  position:relative;
+  overflow:hidden;
+}
+.header-btn:hover { background:rgba(255,255,255,0.08); color:var(--ink); }
+.header-btn:active { transform:scale(0.94); background:rgba(255,255,255,0.1); color:var(--primary-hover); }
+
+/* ============ Main Content ============ */
+.main-content {
+  flex:1;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:0 0 calc(var(--tab-height) + var(--safe-bottom));
+}
+
+/* ============ Tab Content ============ */
+.tab-content { display:none; height:100%; flex-direction:column; animation:fadeIn 0.25s ease; }
+.tab-content.active { display:flex; }
+.tab-scroll {
+  flex:1;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:14px 16px calc(20px + var(--safe-bottom));
+}
+
+/* ============ Stats ============ */
+.stats-bar { display:flex; gap:10px; margin-bottom:16px; }
+.stat-card {
+  flex:1; background:var(--surface-1); border:1px solid var(--hairline);
+  border-radius:var(--radius-lg); padding:16px 12px;
+  position:relative; overflow:hidden;
+}
+.stat-card::before {
+  content:''; position:absolute; left:0; top:12px; bottom:12px;
+  width:3px; border-radius:0 3px 3px 0;
+}
+.stat-card:nth-child(1)::before { background:var(--primary); }
+.stat-card:nth-child(2)::before { background:var(--accent); }
+.stat-card:nth-child(3)::before { background:var(--success); }
+.stat-card .num { font-size:28px; font-weight:700; letter-spacing:-0.6px; color:var(--ink); line-height:1.1; }
+.stat-card .label { font-size:11px; color:var(--ink-subtle); margin-top:3px; font-weight:500; }
+.stat-card .stat-icon { font-size:18px; margin-bottom:4px; display:block; }
+
+/* ============ Quick Actions ============ */
+.quick-actions { display:flex; gap:10px; margin-bottom:16px; }
+.quick-btn {
+  flex:1; padding:16px 12px 14px; border-radius:var(--radius-lg);
+  border:1px solid var(--hairline); background:var(--surface-2);
+  color:var(--ink-muted); font-size:12px; font-weight:600;
+  cursor:pointer; transition:all 0.2s; text-align:center;
+  position:relative; overflow:hidden;
+}
+.quick-btn::after {
+  content:''; position:absolute; inset:0; opacity:0; transition:opacity 0.3s;
+  background:radial-gradient(circle at center, var(--primary-subtle), transparent);
+}
+.quick-btn:hover { border-color:var(--hairline-light); color:var(--ink); transform:translateY(-1px); box-shadow:var(--shadow-sm); }
+.quick-btn:hover::after { opacity:1; }
+.quick-btn:active { transform:scale(0.97); }
+.quick-btn svg { display:block; margin:0 auto 6px; position:relative; z-index:1; }
+.quick-btn span { position:relative; z-index:1; }
+
+/* ============ Filter Bar ============ */
+.filter-bar {
+  display:flex; gap:6px; overflow-x:auto; margin-bottom:14px; padding-bottom:2px;
+  -webkit-overflow-scrolling:touch; scrollbar-width:none;
+}
+.filter-bar::-webkit-scrollbar { display:none; }
+.chip {
+  flex-shrink:0; padding:7px 15px; border-radius:999px;
+  border:1px solid var(--hairline); background:var(--surface-1);
+  color:var(--ink-subtle); font-size:13px; font-weight:500;
+  cursor:pointer; transition:all 0.2s; white-space:nowrap; user-select:none;
+}
+.chip:hover { border-color:var(--hairline-light); color:var(--ink-muted); }
+.chip.active {
+  background:linear-gradient(135deg, var(--primary), #5a63d9);
+  border-color:transparent; color:#fff;
+  box-shadow:0 2px 8px var(--primary-glow);
+}
+.chip:active { transform:scale(0.95); }
+
+/* ============ Search ============ */
+.search-bar { position:relative; margin-bottom:14px; }
+.search-bar input {
+  width:100%; height:44px; padding:0 16px 0 42px;
+  border-radius:999px; border:1px solid var(--hairline);
+  background:var(--surface-2); color:var(--ink); font-size:14px;
+  outline:none; transition:all 0.25s;
+}
+.search-bar input::placeholder { color:var(--ink-subtle); }
+.search-bar input:focus {
+  border-color:var(--primary);
+  box-shadow:0 0 0 3px var(--primary-subtle);
+}
+.search-bar .search-icon {
+  position:absolute; left:14px; top:50%; transform:translateY(-50%);
+  color:var(--ink-subtle); pointer-events:none; transition:color 0.25s;
+}
+.search-bar input:focus ~ .search-icon { color:var(--primary); }
+
+/* ============ Sort ============ */
+.sort-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.sort-bar .count { font-size:12px; color:var(--ink-subtle); font-weight:500; }
+.sort-select {
+  font-size:12px; color:var(--ink-muted); background:var(--surface-2);
+  border:1px solid var(--hairline); border-radius:var(--radius-sm);
+  padding:6px 30px 6px 12px; appearance:none; cursor:pointer; outline:none;
+  font-weight:500; transition:border-color 0.2s;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23949aa5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 10px center;
+}
+.sort-select:focus { border-color:var(--primary); }
+
+/* ============ Package Card ============ */
+.package-list { display:flex; flex-direction:column; gap:10px; }
+.package-card {
+  background:var(--surface-1); border:1px solid var(--hairline);
+  border-radius:var(--radius-lg); padding:16px;
+  transition:all 0.2s;
+  animation:slideUp 0.35s ease both;
+  position:relative;
+}
+.package-card:nth-child(1){animation-delay:0s}
+.package-card:nth-child(2){animation-delay:0.04s}
+.package-card:nth-child(3){animation-delay:0.08s}
+.package-card:nth-child(4){animation-delay:0.12s}
+.package-card:nth-child(5){animation-delay:0.16s}
+.package-card:nth-child(6){animation-delay:0.20s}
+.package-card:nth-child(n+7){animation-delay:0.24s}
+@keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+.package-card.picked-up { opacity:0.5; filter:grayscale(0.3); }
+
+.card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
+.platform-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:3px 12px; border-radius:999px; font-size:12px; font-weight:600;
+  letter-spacing:0.2px;
+}
+.badge-jd { background:rgba(255,71,57,0.12); color:#ff5c4f; }
+.badge-sf { background:rgba(110,120,242,0.12); color:#9199ff; }
+.badge-cn { background:rgba(255,152,0,0.12); color:#ffa826; }
+.badge-pdd { background:rgba(233,30,99,0.12); color:#f06292; }
+.badge-tb { background:rgba(255,107,53,0.12); color:#ff8a5c; }
+.badge-zt { background:rgba(0,188,212,0.12); color:#26c6da; }
+.badge-yt { background:rgba(76,175,80,0.12); color:#66bb6a; }
+.badge-yd { background:rgba(156,39,176,0.12); color:#ba68c8; }
+.badge-other { background:var(--primary-subtle); color:var(--primary-hover); }
+
+.card-meta { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.card-date { font-size:12px; color:var(--ink-subtle); }
+.card-days {
+  font-size:11px; color:var(--ink-subtle); background:var(--surface-3);
+  padding:2px 8px; border-radius:999px; font-weight:500;
+}
+.card-days.today { color:var(--accent); background:var(--accent-subtle); }
+
+.pickup-code-section {
+  background:var(--surface-2); border-radius:var(--radius-md);
+  padding:14px 16px; margin-bottom:10px;
+  display:flex; align-items:center; justify-content:space-between;
+  border:1px solid var(--hairline);
+  transition:border-color 0.2s;
+}
+.pickup-code-section:hover { border-color:var(--hairline-light); }
+.pickup-code-section .label { font-size:10px; color:var(--ink-subtle); margin-bottom:2px; text-transform:uppercase; letter-spacing:1px; font-weight:600; }
+.pickup-code-section .code {
+  font-size:28px; font-weight:800; letter-spacing:3px; color:var(--ink);
+  font-variant-numeric:tabular-nums; line-height:1.1;
+}
+.copy-btn {
+  width:44px; height:44px; border-radius:var(--radius-sm);
+  border:1px solid var(--hairline); background:var(--surface-3);
+  color:var(--ink-muted); cursor:pointer; display:flex;
+  align-items:center; justify-content:center; transition:all 0.2s; flex-shrink:0;
+}
+.copy-btn:hover { border-color:var(--primary); color:var(--primary); background:var(--primary-subtle); }
+.copy-btn:active { transform:scale(0.92); }
+.copy-btn.copied { background:var(--success); color:#000; border-color:var(--success); animation:popIn 0.3s ease; }
+@keyframes popIn { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
+
+.card-address { font-size:13px; color:var(--ink-muted); margin-bottom:4px; display:flex; gap:6px; align-items:center; }
+.card-address svg { flex-shrink:0; opacity:0.5; }
+.card-desc { font-size:12px; color:var(--ink-subtle); margin-bottom:12px; padding-left:20px; }
+
+.card-actions { display:flex; gap:6px; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.05); padding-top:10px; }
+.card-btn {
+  padding:7px 14px; border-radius:var(--radius-sm); border:none;
+  font-size:12px; font-weight:600; cursor:pointer; transition:all 0.2s;
+  letter-spacing:0.2px;
+}
+.card-btn:active { transform:scale(0.95); }
+.card-btn.done {
+  background:var(--primary-subtle); color:var(--primary-hover);
+  flex:1; text-align:center;
+}
+.card-btn.done:hover { background:rgba(110,120,242,0.25); }
+.card-btn.delete { background:rgba(239,68,68,0.08); color:var(--danger); }
+.card-btn.delete:hover { background:rgba(239,68,68,0.18); }
+.card-btn.restore { background:var(--surface-2); color:var(--ink-muted); border:1px solid var(--hairline); }
+.card-btn.restore:hover { background:var(--surface-3); color:var(--ink); }
+
+/* ============ Empty State ============ */
+.empty-state {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:64px 28px; text-align:center;
+  animation:fadeIn 0.4s ease;
+}
+.empty-state .icon {
+  width:80px; height:80px; border-radius:50%;
+  background:var(--surface-2); border:1px solid var(--hairline);
+  display:flex; align-items:center; justify-content:center; font-size:36px;
+  margin-bottom:20px;
+}
+.empty-state h3 { font-size:17px; font-weight:700; color:var(--ink); margin-bottom:6px; }
+.empty-state p { font-size:13px; color:var(--ink-subtle); max-width:280px; line-height:1.6; }
+
+/* ============ Bottom Tab ============ */
+.tab-bar {
+  position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+  width:100%; max-width:480px;
+  height:calc(var(--tab-height) + var(--safe-bottom));
+  padding-bottom:var(--safe-bottom);
+  background:rgba(7,8,10,0.88);
+  backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+  border-top:1px solid rgba(255,255,255,0.06);
+  display:flex; align-items:center; z-index:30;
+}
+.tab-item {
+  flex:1; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:3px; height:100%; cursor:pointer;
+  transition:all 0.2s; user-select:none; position:relative;
+}
+.tab-item::before {
+  content:''; position:absolute; top:0; left:50%; transform:translateX(-50%);
+  width:0; height:3px; border-radius:0 0 3px 3px;
+  background:var(--primary); transition:width 0.3s;
+}
+.tab-item.active::before { width:32px; }
+.tab-item svg { color:var(--ink-subtle); transition:all 0.2s; }
+.tab-item span { font-size:10px; font-weight:600; color:var(--ink-subtle); transition:all 0.2s; letter-spacing:0.2px; }
+.tab-item.active svg { color:var(--primary); }
+.tab-item.active span { color:var(--ink); }
+.tab-item:active { transform:scale(0.95); }
+.tab-badge {
+  position:absolute; top:6px; right:50%; margin-right:-24px;
+  background:var(--danger); color:#fff; font-size:10px; font-weight:700;
+  min-width:18px; height:18px; border-radius:999px;
+  display:flex; align-items:center; justify-content:center; padding:0 5px;
+  box-shadow:0 2px 6px rgba(239,68,68,0.4);
+}
+
+/* ============ Modal ============ */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.7);
+  z-index:40; display:none; align-items:flex-end; justify-content:center;
+  backdrop-filter:blur(4px);
+}
+.modal-overlay.open { display:flex; animation:fadeIn 0.25s ease; }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+.modal {
+  background:var(--surface-1); border:1px solid var(--hairline-light);
+  border-radius:var(--radius-xl) var(--radius-xl) 0 0;
+  width:100%; max-width:480px; max-height:90vh; overflow-y:auto;
+  padding:20px 20px calc(24px + var(--safe-bottom));
+  animation:slideUpModal 0.35s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes slideUpModal { from { transform:translateY(100%); } to { transform:translateY(0); } }
+.modal-handle { width:40px; height:4px; border-radius:2px; background:var(--hairline-light); margin:0 auto 20px; }
+.modal h2 { font-size:20px; font-weight:700; letter-spacing:-0.3px; margin-bottom:22px; }
+
+/* ============ Form ============ */
+.form-group { margin-bottom:16px; }
+.form-group label { display:block; font-size:12px; font-weight:600; color:var(--ink-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
+.form-group select, .form-group input, .form-group textarea {
+  width:100%; padding:12px 14px; border-radius:var(--radius-sm);
+  border:1px solid var(--hairline); background:var(--surface-2);
+  color:var(--ink); font-size:15px; outline:none; transition:all 0.2s;
+}
+.form-group select:focus, .form-group input:focus, .form-group textarea:focus {
+  border-color:var(--primary);
+  box-shadow:0 0 0 3px var(--primary-subtle);
+}
+.form-group select {
+  appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23949aa5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 14px center; padding-right:40px;
+}
+.form-group textarea { resize:vertical; min-height:60px; }
+.form-row { display:flex; gap:12px; }
+.form-row .form-group { flex:1; }
+.form-actions { display:flex; gap:10px; margin-top:24px; }
+.btn {
+  padding:12px 20px; border-radius:var(--radius-sm); border:none;
+  font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s;
+  flex:1; text-align:center; letter-spacing:0.2px;
+}
+.btn:active { transform:scale(0.96); }
+.btn-primary {
+  background:linear-gradient(135deg, var(--primary), #5a63d0);
+  color:#fff; box-shadow:0 2px 8px var(--primary-glow);
+}
+.btn-primary:hover { box-shadow:0 4px 16px var(--primary-glow); }
+.btn-secondary { background:var(--surface-2); color:var(--ink-muted); border:1px solid var(--hairline); }
+.btn-secondary:hover { background:var(--surface-3); }
+.btn-success { background:var(--success); color:#000; font-weight:600; }
+.btn-danger { background:var(--danger); color:#fff; }
+
+/* ============ Toast ============ */
+.toast {
+  position:fixed; top:20px;
+  left:50%; transform:translateX(-50%) translateY(-12px);
+  background:var(--surface-3); color:var(--ink);
+  padding:12px 22px; border-radius:var(--radius-md);
+  font-size:13px; font-weight:600; z-index:50;
+  opacity:0; transition:all 0.3s cubic-bezier(0.16,1,0.3,1); pointer-events:none;
+  white-space:nowrap; max-width:90%;
+  border:1px solid var(--hairline-light);
+  box-shadow:var(--shadow-md);
+  display:flex; align-items:center; gap:8px;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ============ Confirm ============ */
+.confirm-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.7);
+  z-index:45; display:none; align-items:center; justify-content:center;
+  backdrop-filter:blur(4px);
+}
+.confirm-overlay.open { display:flex; animation:fadeIn 0.2s ease; }
+.confirm-box {
+  background:var(--surface-2); border:1px solid var(--hairline-light);
+  border-radius:var(--radius-lg); padding:28px 24px; width:320px; text-align:center;
+  box-shadow:var(--shadow-md);
+  animation:slideUp 0.3s ease;
+}
+.confirm-box h3 { font-size:17px; font-weight:700; margin-bottom:8px; }
+.confirm-box p { font-size:13px; color:var(--ink-muted); margin-bottom:22px; line-height:1.5; }
+.confirm-actions { display:flex; gap:10px; }
+.confirm-actions .btn { flex:1; }
+
+/* ============ Auto Collect ============ */
+.collect-section { margin-bottom:20px; }
+.collect-section h3 {
+  font-size:15px; font-weight:700; color:var(--ink);
+  margin-bottom:10px; display:flex; align-items:center; gap:8px;
+}
+.collect-section .desc { font-size:12px; color:var(--ink-subtle); margin-bottom:12px; line-height:1.6; }
+.sms-input {
+  width:100%; min-height:130px; padding:14px; border-radius:var(--radius-md);
+  border:1px solid var(--hairline); background:var(--surface-2);
+  color:var(--ink); font-size:14px; outline:none; resize:vertical;
+  transition:all 0.2s; line-height:1.8;
+}
+.sms-input:focus {
+  border-color:var(--primary);
+  box-shadow:0 0 0 3px var(--primary-subtle);
+}
+.sms-input::placeholder { color:var(--ink-subtle); font-size:13px; line-height:1.6; }
+
+.collect-actions { display:flex; gap:8px; margin-top:12px; }
+.collect-actions .btn { flex:none; min-width:100px; }
+.collect-actions .btn:disabled { opacity:0.4; pointer-events:none; }
+
+/* Parse Result */
+.parse-result {
+  margin-top:14px; border:1px solid var(--hairline-light);
+  border-radius:var(--radius-lg); overflow:hidden;
+  animation:slideUp 0.3s ease;
+  background:var(--surface-2);
+}
+.parse-result.hidden { display:none; }
+.parse-header {
+  background:var(--surface-3); padding:12px 16px;
+  font-size:13px; font-weight:700; color:var(--ink-muted);
+  border-bottom:1px solid var(--hairline);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.parse-body { padding:16px; }
+.parse-field { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.parse-field:last-child { margin-bottom:0; }
+.parse-field .pf-label { font-size:11px; color:var(--ink-subtle); width:56px; flex-shrink:0; font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
+.parse-field .pf-value {
+  flex:1; padding:8px 12px; border-radius:var(--radius-sm);
+  background:var(--surface-1); font-size:14px; color:var(--ink);
+  border:1px solid var(--hairline); outline:none; transition:all 0.2s;
+}
+.parse-field .pf-value:focus {
+  border-color:var(--primary);
+  box-shadow:0 0 0 3px var(--primary-subtle);
+}
+.parse-field .pf-value.editable { cursor:text; }
+.parse-actions { padding:12px 16px; border-top:1px solid var(--hairline); display:flex; gap:8px; background:var(--surface-3); }
+.parse-actions .btn { flex:1; }
+
+/* OCR Area */
+.ocr-upload {
+  border:2px dashed var(--hairline); border-radius:var(--radius-lg);
+  padding:28px; text-align:center; cursor:pointer;
+  transition:all 0.25s; background:var(--surface-1);
+}
+.ocr-upload:hover { border-color:var(--primary); background:var(--primary-subtle); transform:translateY(-1px); }
+.ocr-upload .ocr-icon { font-size:36px; margin-bottom:10px; }
+.ocr-upload .ocr-text { font-size:13px; color:var(--ink-subtle); font-weight:500; }
+.ocr-upload input { display:none; }
+.ocr-preview { margin-top:12px; display:none; }
+.ocr-preview img { max-width:100%; max-height:220px; border-radius:var(--radius-md); border:1px solid var(--hairline-light); }
+.ocr-status {
+  margin-top:10px; padding:10px 14px; border-radius:var(--radius-md);
+  background:var(--surface-2); font-size:13px; color:var(--ink-subtle);
+  display:none; align-items:center; gap:10px;
+}
+.ocr-status .spinner {
+  width:18px; height:18px; border:2px solid var(--hairline);
+  border-top-color:var(--primary); border-radius:50%;
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Divider */
+.section-divider {
+  display:flex; align-items:center; gap:14px; margin:24px 0 20px;
+  color:var(--ink-subtle); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1px;
+}
+.section-divider::before, .section-divider::after {
+  content:''; flex:1; height:1px; background:var(--hairline);
+}
+
+/* ============ Responsive ============ */
+@media (max-width:360px) {
+  .pickup-code-section .code { font-size:22px; }
+  .stat-card .num { font-size:22px; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ===== Header ===== -->
+	  <header class="header">
+    <div class="header-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 9V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><rect x="12" y="10" width="12" height="14" rx="3" ry="3"/><line x1="16" y1="17" x2="20" y2="17"/><line x1="16" y1="13" x2="16" y2="13.01"/>
+      </svg>
+      <h1>包裹助手</h1>
+    </div>
+    <div class="header-actions">
+      <button class="header-btn" onclick="bulkImport()" title="批量导入">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </button>
+      <button class="header-btn" onclick="clearAllData()" title="清空数据">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== Main Content ===== -->
+  <div class="main-content" id="mainContent">
+
+    <!-- ========== TAB 1: HOME ========== -->
+    <div class="tab-content active" id="tabHome">
+      <div class="tab-scroll" id="homeScroll">
+        <!-- Stats -->
+        <div class="stats-bar">
+          <div class="stat-card"><span class="stat-icon">📥</span><div class="num" id="statActive">0</div><div class="label">待取件</div></div>
+          <div class="stat-card"><span class="stat-icon">📬</span><div class="num" id="statToday">0</div><div class="label">今日到达</div></div>
+          <div class="stat-card"><span class="stat-icon">📦</span><div class="num" id="statTotal">0</div><div class="label">累计</div></div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+          <button class="quick-btn" onclick="switchTab('collect')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" >
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <span>自动收集</span>
+          </button>
+          <button class="quick-btn" onclick="openAddModal()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" >
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>手动添加</span>
+          </button>
+        </div>
+
+        <!-- Search -->
+        <div class="search-bar">
+          <input type="text" id="searchInput" placeholder="搜索收件码、地址、描述..." oninput="renderHome()">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </div>
+
+        <!-- Filter -->
+        <div class="filter-bar" id="filterBar"></div>
+
+        <!-- Sort -->
+        <div class="sort-bar">
+          <span class="count" id="resultCount">共 0 个</span>
+          <select class="sort-select" id="sortSelect" onchange="renderHome()">
+            <option value="newest">最新优先</option>
+            <option value="oldest">最早优先</option>
+            <option value="code">按收件码</option>
+          </select>
+        </div>
+
+        <!-- List -->
+        <div id="homeList"></div>
+      </div>
+    </div>
+
+    <!-- ========== TAB 2: AUTO COLLECT ========== -->
+    <div class="tab-content" id="tabCollect">
+      <div class="tab-scroll">
+        <!-- SMS Section -->
+        <div class="collect-section">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            短信自动解析
+          </h3>
+          <div class="desc">复制快递短信粘贴到下方，自动提取取件码、平台和地址</div>
+          <textarea class="sms-input" id="smsInput" placeholder="粘贴快递短信内容...
+
+例如：
+【菜鸟驿站】您的包裹已到阳光花园小区菜鸟驿站，请凭取件码6-5-1234取件，如有问题请联系站长。
+【京东快递】您的快递已放在A栋快递柜，取件码654321，请及时取件。
+【顺丰速运】您的包裹已到达科技园营业点，取件码SF7890。"></textarea>
+          <div class="collect-actions">
+            <button class="btn btn-primary" onclick="parseSms()">📩 解析短信</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('smsInput').value=''">清空</button>
+          </div>
+
+          <!-- Parse result -->
+          <div class="parse-result hidden" id="parseResult">
+            <div class="parse-header">
+              <span>📋 解析结果</span>
+              <span style="font-size:12px;color:var(--ink-subtle);font-weight:400;">可编辑修改</span>
+            </div>
+            <div class="parse-body" id="parseBody">
+              <div class="parse-field">
+                <span class="pf-label">快递平台</span>
+                <input class="pf-value editable" id="parsePlatform" value="">
+              </div>
+              <div class="parse-field">
+                <span class="pf-label">取件码</span>
+                <input class="pf-value editable" id="parseCode" value="">
+              </div>
+              <div class="parse-field">
+                <span class="pf-label">取件地址</span>
+                <input class="pf-value editable" id="parseAddress" value="">
+              </div>
+              <div class="parse-field">
+                <span class="pf-label">描述</span>
+                <input class="pf-value editable" id="parseDesc" value="" placeholder="选填">
+              </div>
+            </div>
+            <div class="parse-actions">
+              <button class="btn btn-secondary" onclick="clearParse()">取消</button>
+              <button class="btn btn-primary" onclick="addParsed()">✓ 确认添加</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-divider">或者</div>
+
+        <!-- OCR Section -->
+        <div class="collect-section">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+            </svg>
+            截图识别（OCR）
+          </h3>
+          <div class="desc">上传快递通知截图，自动识别文字提取信息</div>
+          <div class="ocr-upload" id="ocrUpload" onclick="document.getElementById('ocrInput').click()">
+            <div class="ocr-icon">📷</div>
+            <div class="ocr-text">点击上传截图</div>
+            <input type="file" id="ocrInput" accept="image/*" onchange="handleOcrImage(event)">
+          </div>
+          <div class="ocr-preview" id="ocrPreview">
+            <img id="ocrImage" src="" alt="截图预览">
+          </div>
+          <div class="ocr-status" id="ocrStatus">
+            <div class="spinner"></div>
+            <span>正在识别中，请稍候...</span>
+          </div>
+        </div>
+
+        <div class="section-divider">或者</div>
+
+        <!-- Manual Add (collapsible in collect tab) -->
+        <div class="collect-section">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            手动填写
+          </h3>
+          <form onsubmit="manualAdd(event)">
+            <div class="form-group">
+              <label>快递平台</label>
+              <select id="manualPlatform" required>
+                <option value="">选择平台</option>
+                <option value="京东">京东快递</option>
+                <option value="顺丰">顺丰速运</option>
+                <option value="菜鸟">菜鸟裹裹</option>
+                <option value="拼多多">拼多多</option>
+                <option value="淘宝">淘宝</option>
+                <option value="中通">中通快递</option>
+                <option value="圆通">圆通速递</option>
+                <option value="韵达">韵达快递</option>
+                <option value="邮政">中国邮政</option>
+                <option value="极兔">极兔速递</option>
+                <option value="其他">其他</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>取件码</label>
+                <input type="text" id="manualCode" placeholder="请输入取件码" required>
+              </div>
+              <div class="form-group">
+                <label>到达日期</label>
+                <input type="date" id="manualDate" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>取件地址</label>
+              <input type="text" id="manualAddress" placeholder="如：XX小区菜鸟驿站" required>
+            </div>
+            <div class="form-group">
+              <label>描述（选填）</label>
+              <input type="text" id="manualDesc" placeholder="如：买的衣服">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:4px;">✚ 添加到列表</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== TAB 3: HISTORY ========== -->
+    <div class="tab-content" id="tabHistory">
+      <div class="tab-scroll">
+        <div class="stats-bar">
+          <div class="stat-card"><span class="stat-icon">✅</span><div class="num" id="histPicked">0</div><div class="label">已取件</div></div>
+          <div class="stat-card"><span class="stat-icon">📋</span><div class="num" id="histTotal">0</div><div class="label">总记录</div></div>
+        </div>
+        <div id="historyList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Tab Bar ===== -->
+  <nav class="tab-bar">
+    <div class="tab-item active" data-tab="home" onclick="switchTab('home')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      <span>首页</span>
+      <div class="tab-badge" id="navBadge" style="display:none">0</div>
+    </div>
+    <div class="tab-item" data-tab="collect" onclick="switchTab('collect')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+      <span>自动收集</span>
+    </div>
+    <div class="tab-item" data-tab="history" onclick="switchTab('history')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <span>已取件</span>
+    </div>
+  </nav>
+</div>
+
+<!-- ===== Edit Modal ===== -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2 id="editModalTitle">编辑包裹</h2>
+    <form onsubmit="saveEdit(event)">
+      <input type="hidden" id="editId" value="">
+      <div class="form-group">
+        <label>快递平台</label>
+        <select id="editPlatform" required>
+          <option value="">选择平台</option>
+          <option value="京东">京东快递</option>
+          <option value="顺丰">顺丰速运</option>
+          <option value="菜鸟">菜鸟裹裹</option>
+          <option value="拼多多">拼多多</option>
+          <option value="淘宝">淘宝</option>
+          <option value="中通">中通快递</option>
+          <option value="圆通">圆通速递</option>
+          <option value="韵达">韵达快递</option>
+          <option value="邮政">中国邮政</option>
+          <option value="极兔">极兔速递</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>取件码</label>
+          <input type="text" id="editCode" required>
+        </div>
+        <div class="form-group">
+          <label>到达日期</label>
+          <input type="date" id="editDate" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>取件地址</label>
+        <input type="text" id="editAddress" required>
+      </div>
+      <div class="form-group">
+        <label>描述</label>
+        <input type="text" id="editDesc">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeEditModal()">取消</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== Confirm Dialog ===== -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <h3 id="confirmTitle">确认操作</h3>
+    <p id="confirmMsg">确定要执行此操作吗？</p>
+    <div class="confirm-actions">
+      <button class="btn btn-secondary" onclick="closeConfirm()">取消</button>
+      <button class="btn btn-danger" id="confirmBtn" onclick="execConfirm()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Bulk Import Modal ===== -->
+<div class="modal-overlay" id="bulkModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2>批量导入</h2>
+    <div class="desc" style="font-size:13px;color:var(--ink-subtle);margin-bottom:16px;">
+      每行一个包裹，格式：<code style="color:var(--ink);background:var(--surface-2);padding:1px 6px;border-radius:4px;">平台 | 取件码 | 地址 | 描述</code>
+    </div>
+    <textarea id="bulkInput" style="width:100%;min-height:160px;padding:12px;border-radius:var(--radius-md);border:1px solid var(--hairline);background:var(--surface-2);color:var(--ink);font-size:14px;outline:none;resize:vertical;line-height:1.7;" placeholder="京东 | 6-5-1234 | 阳光花园菜鸟驿站 | 买的衣服
+顺丰 | SF7890 | 科技园营业点
+菜鸟 | 456789 | XX小区驿站 | 日用品"></textarea>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeBulkModal()">取消</button>
+      <button class="btn btn-primary" onclick="doBulkImport()">批量导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Toast ===== -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ Data ============
+const KEY = 'pkg_tracker_data';
+let packages = [];
+let currentTab = 'home';
+let confirmCb = null;
+let ocrResolved = false;
+
+// ============ Init ============
+function init() {
+  loadData();
+  syncDateInputs();
+  renderHome();
+  renderHistory();
+  updateNavBadge();
+}
+
+function loadData() {
+  try { packages = JSON.parse(localStorage.getItem(KEY)) || []; } catch(e) { packages = []; }
+}
+function saveData() {
+  localStorage.setItem(KEY, JSON.stringify(packages));
+}
+
+// ============ Date ============
+function getToday() {
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function syncDateInputs() {
+  const t = getToday();
+  document.getElementById('manualDate').value = t;
+}
+function fmtDate(s) {
+  const d = new Date(s);
+  return (d.getMonth()+1)+'月'+d.getDate()+'日';
+}
+function daysDiff(s) {
+  const t = new Date(getToday()), d = new Date(s);
+  return Math.floor((t - d) / 86400000);
+}
+
+// ============ Tab ============
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active');
+  if (tab === 'home') renderHome();
+  if (tab === 'history') renderHistory();
+  if (tab === 'collect') syncDateInputs();
+}
+
+function openAddModal() {
+  switchTab('collect');
+  syncDateInputs();
+  document.getElementById('manualCode').focus();
+}
+
+// ============ Home ============
+function renderHome() {
+  let list = getFilteredList();
+  updateStats();
+  const el = document.getElementById('homeList');
+  document.getElementById('resultCount').textContent = '共 '+list.length+' 个';
+  if (!list.length) {
+    const q = document.getElementById('searchInput').value.trim();
+    el.innerHTML = '<div class="empty-state"><div class="icon">📭</div><h3>'+
+      (q ? '未找到"'+q+'"' : '暂无待取件包裹')+'</h3><p>'+
+      (q ? '试试其他关键词' : '去"自动收集"粘贴短信或添加截图')+'</p></div>';
+    return;
+  }
+  el.innerHTML = '<div class="package-list">'+list.map(p=>pkgCard(p)).join('')+'</div>';
+}
+
+function getFilteredList() {
+  const filter = document.querySelector('#filterBar .chip.active');
+  const f = filter ? filter.dataset.filter : 'all';
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const sort = document.getElementById('sortSelect').value;
+  return packages.filter(p => {
+    if (p.pickedUp) return false;
+    if (f !== 'all' && p.platform !== f) return false;
+    if (q && !p.pickupCode.toLowerCase().includes(q) && !p.address.toLowerCase().includes(q) && !(p.description||'').toLowerCase().includes(q) && !p.platform.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b) => {
+    if (sort === 'newest') return b.createdAt - a.createdAt;
+    if (sort === 'oldest') return a.createdAt - b.createdAt;
+    return a.pickupCode.localeCompare(b.pickupCode);
+  });
+}
+
+function buildFilters() {
+  const bar = document.getElementById('filterBar');
+  const set = [...new Set(packages.map(p=>p.platform))];
+  const order = ['京东','顺丰','菜鸟','拼多多','淘宝','中通','圆通','韵达','邮政','极兔','其他'];
+  set.sort((a,b)=> (order.indexOf(a)===-1?99:order.indexOf(a)) - (order.indexOf(b)===-1?99:order.indexOf(b)));
+  bar.innerHTML = '<div class="chip active" data-filter="all" onclick="setFilter(this)">全部</div>' +
+    set.map(p => '<div class="chip" data-filter="'+p+'" onclick="setFilter(this)">'+p+'</div>').join('');
+}
+
+function setFilter(el) {
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderHome();
+}
+
+function updateStats() {
+  const active = packages.filter(p=>!p.pickedUp).length;
+  const today = packages.filter(p=>!p.pickedUp && p.arrivalDate===getToday()).length;
+  document.getElementById('statActive').textContent = active;
+  document.getElementById('statToday').textContent = today;
+  document.getElementById('statTotal').textContent = packages.length;
+  document.getElementById('histPicked').textContent = packages.filter(p=>p.pickedUp).length;
+  document.getElementById('histTotal').textContent = packages.length;
+  updateNavBadge();
+}
+
+function updateNavBadge() {
+  const n = packages.filter(p=>!p.pickedUp).length;
+  const b = document.getElementById('navBadge');
+  if (n > 0) { b.textContent = n>99?'99+':n; b.style.display='flex'; }
+  else b.style.display='none';
+}
+
+// ============ Card ============
+const BADGES = {
+  '京东':'badge-jd','顺丰':'badge-sf','菜鸟':'badge-cn','拼多多':'badge-pdd',
+  '淘宝':'badge-tb','中通':'badge-zt','圆通':'badge-yt','韵达':'badge-yd',
+  '邮政':'badge-other','极兔':'badge-other'
+};
+
+function pkgCard(p) {
+  const b = BADGES[p.platform]||'badge-other';
+  const dd = daysDiff(p.arrivalDate);
+  const dl = dd===0 ? '今日到达' : dd>0 ? '已 '+dd+' 天' : '还有 '+Math.abs(dd)+' 天';
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const hl = (t) => { if(!q||!t) return t; const i=t.toLowerCase().indexOf(q); return i===-1?t: t.slice(0,i)+'<span class="highlight" style="color:var(--primary-hover);font-weight:600">'+t.slice(i,i+q.length)+'</span>'+t.slice(i+q.length); };
+  return '<div class="package-card">'+
+    '<div class="card-top"><span class="platform-badge '+b+'">'+p.platform+'</span><div class="card-meta"><span class="card-date">'+fmtDate(p.arrivalDate)+'</span><span class="card-days'+(dd===0?' today':'')+'">'+dl+'</span></div></div>'+
+    '<div class="pickup-code-section"><div><div class="label">取件码</div><div class="code">'+hl(p.pickupCode)+'</div></div>'+
+    '<button class="copy-btn" onclick="copyCode(\''+p.id+'\',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>'+
+    '<div class="card-address"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>'+hl(p.address)+'</span></div>'+
+    (p.description?'<div class="card-desc">📝 '+hl(p.description)+'</div>':'')+
+    '<div class="card-actions">'+
+    '<button class="card-btn done" onclick="markDone(\''+p.id+'\')">✓ 已取件</button>'+
+    '<button class="card-btn delete" onclick="confirmDel(\''+p.id+'\')">删除</button>'+
+    '<button class="card-btn restore" onclick="openEdit(\''+p.id+'\')">编辑</button>'+
+    '</div></div>';
+}
+
+function historyCard(p) {
+  const b = BADGES[p.platform]||'badge-other';
+  return '<div class="package-card picked-up">'+
+    '<div class="card-top"><span class="platform-badge '+b+'">'+p.platform+'</span><div class="card-meta"><span class="card-date">'+fmtDate(p.arrivalDate)+'</span></div></div>'+
+    '<div class="pickup-code-section"><div><div class="label">取件码</div><div class="code" style="font-size:22px;letter-spacing:1px">'+p.pickupCode+'</div></div>'+
+    '<button class="copy-btn" onclick="copyCode(\''+p.id+'\',this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>'+
+    '<div class="card-address"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>'+p.address+'</span></div>'+
+    (p.description?'<div class="card-desc">📝 '+p.description+'</div>':'')+
+    '<div class="card-actions">'+
+    '<button class="card-btn restore" onclick="unmarkDone(\''+p.id+'\')">↩ 放回待取</button>'+
+    '<button class="card-btn delete" onclick="confirmDel(\''+p.id+'\')">删除</button>'+
+    '</div></div>';
+}
+
+// ============ History ============
+function renderHistory() {
+  const list = packages.filter(p=>p.pickedUp).sort((a,b)=>b.createdAt-a.createdAt);
+  const el = document.getElementById('historyList');
+  document.getElementById('histPicked').textContent = list.length;
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">📪</div><h3>暂无已取件记录</h3></div>';
+    return;
+  }
+  el.innerHTML = '<div class="package-list">'+list.map(p=>historyCard(p)).join('')+'</div>';
+  updateStats();
+}
+
+// ============ CRUD ============
+function manualAdd(e) {
+  e.preventDefault();
+  const pkg = {
+    id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    platform: document.getElementById('manualPlatform').value,
+    pickupCode: document.getElementById('manualCode').value.trim(),
+    address: document.getElementById('manualAddress').value.trim(),
+    description: document.getElementById('manualDesc').value.trim(),
+    arrivalDate: document.getElementById('manualDate').value,
+    createdAt: Date.now(),
+    pickedUp: false
+  };
+  if (!pkg.platform||!pkg.pickupCode||!pkg.address||!pkg.arrivalDate) { showToast('请填写完整信息'); return; }
+  packages.unshift(pkg);
+  saveData();
+  document.getElementById('manualCode').value='';
+  document.getElementById('manualAddress').value='';
+  document.getElementById('manualDesc').value='';
+  buildFilters();
+  renderHome();
+  showToast('✅ 添加成功');
+}
+
+function markDone(id) {
+  const p = packages.find(x=>x.id===id);
+  if (p) { p.pickedUp=true; saveData(); renderHome(); renderHistory(); showToast('✓ 已标记取件'); }
+}
+
+function unmarkDone(id) {
+  const p = packages.find(x=>x.id===id);
+  if (p) { p.pickedUp=false; saveData(); renderHome(); renderHistory(); showToast('↩ 已放回待取列表'); }
+}
+
+function openEdit(id) {
+  const p = packages.find(x=>x.id===id);
+  if (!p) return;
+  document.getElementById('editId').value = p.id;
+  document.getElementById('editPlatform').value = p.platform;
+  document.getElementById('editCode').value = p.pickupCode;
+  document.getElementById('editAddress').value = p.address;
+  document.getElementById('editDesc').value = p.description||'';
+  document.getElementById('editDate').value = p.arrivalDate;
+  document.getElementById('editModalTitle').textContent = '编辑包裹';
+  document.getElementById('editModal').classList.add('open');
+}
+
+function saveEdit(e) {
+  e.preventDefault();
+  const id = document.getElementById('editId').value;
+  const p = packages.find(x=>x.id===id);
+  if (!p) return;
+  p.platform = document.getElementById('editPlatform').value;
+  p.pickupCode = document.getElementById('editCode').value.trim();
+  p.address = document.getElementById('editAddress').value.trim();
+  p.description = document.getElementById('editDesc').value.trim();
+  p.arrivalDate = document.getElementById('editDate').value;
+  saveData();
+  closeEditModal();
+  buildFilters();
+  renderHome();
+  renderHistory();
+  showToast('已保存');
+}
+
+function closeEditModal() { document.getElementById('editModal').classList.remove('open'); }
+
+function confirmDel(id) {
+  confirmCb = ()=>{ packages=packages.filter(x=>x.id!==id); saveData(); buildFilters(); renderHome(); renderHistory(); showToast('已删除'); };
+  document.getElementById('confirmTitle').textContent = '删除包裹';
+  document.getElementById('confirmMsg').textContent = '确定要删除该记录吗？不可恢复。';
+  document.getElementById('confirmOverlay').classList.add('open');
+}
+
+function clearAllData() {
+  if (!packages.length) { showToast('暂无数据'); return; }
+  confirmCb = ()=>{ packages=[]; saveData(); buildFilters(); renderHome(); renderHistory(); showToast('已清空'); };
+  document.getElementById('confirmTitle').textContent = '清空数据';
+  document.getElementById('confirmMsg').textContent = '确定删除全部 '+packages.length+' 条记录？不可恢复。';
+  document.getElementById('confirmOverlay').classList.add('open');
+}
+
+function closeConfirm() { document.getElementById('confirmOverlay').classList.remove('open'); confirmCb=null; }
+function execConfirm() { if(confirmCb) confirmCb(); closeConfirm(); }
+
+// ============ Copy ============
+function copyCode(id, btn) {
+  const p = packages.find(x=>x.id===id);
+  if (!p) return;
+  const t = p.pickupCode;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(t).then(()=>{ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'),1000); showToast('已复制: '+t); });
+  } else {
+    const ta = document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast('已复制: '+t); } catch(e) { showToast('复制失败'); }
+    document.body.removeChild(ta);
+  }
+}
+
+// ============ Toast ============
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+// ============ SMS Parser ============
+const PLATFORM_KEYWORDS = {
+  '京东':['京东','jd','京东快递'],
+  '顺丰':['顺丰','sf','顺丰速运'],
+  '菜鸟':['菜鸟','菜鸟驿站','菜鸟裹裹'],
+  '拼多多':['拼多多','pdd'],
+  '淘宝':['淘宝','淘','taobao'],
+  '中通':['中通','中通快递','zto'],
+  '圆通':['圆通','圆通速递','yto'],
+  '韵达':['韵达','韵达快递','yunda'],
+  '邮政':['邮政','中国邮政','ems'],
+  '极兔':['极兔','极兔速递','jtexpress']
+};
+
+function parseSms() {
+  const text = document.getElementById('smsInput').value.trim();
+  if (!text) { showToast('请先粘贴短信内容'); return; }
+
+  // Detect platform
+  let platform = '其他';
+  const fullText = text.toLowerCase();
+  for (const [name, keywords] of Object.entries(PLATFORM_KEYWORDS)) {
+    if (keywords.some(k => fullText.includes(k.toLowerCase()))) {
+      platform = name;
+      break;
+    }
+  }
+  // Also check brackets for platform name
+  const bracketMatch = text.match(/【(.+?)】/);
+  if (bracketMatch) {
+    const bracketed = bracketMatch[1];
+    for (const [name, keywords] of Object.entries(PLATFORM_KEYWORDS)) {
+      if (keywords.some(k => bracketed.includes(k))) {
+        platform = name;
+        break;
+      }
+    }
+  }
+
+  // Extract pickup code
+  let code = '';
+  // Pattern 1: "取件码" followed by numbers/dash
+  const codeMatch = text.match(/取件码[：:]\s*([\w\-]+)/);
+  if (codeMatch) code = codeMatch[1];
+  // Pattern 2: "取件码是"
+  if (!code) {
+    const m = text.match(/取件码[是为]\s*([\w\-]+)/);
+    if (m) code = m[1];
+  }
+  // Pattern 3: "取件码" nearby text with numbers
+  if (!code) {
+    const m = text.match(/取件码\s*([\w\-]+)/);
+    if (m) code = m[1];
+  }
+  // Pattern 4: general "code/number" pattern after 取件
+  if (!code) {
+    const idx = text.indexOf('取件');
+    if (idx !== -1) {
+      const after = text.slice(idx + 2, idx + 30);
+      const m = after.match(/([\w\-]{3,})/);
+      if (m) code = m[1];
+    }
+  }
+  // Pattern 5: standalone number groups (last resort for SMS)
+  if (!code) {
+    const m = text.match(/\b(\d{4,})\b/);
+    if (m) code = m[1];
+  }
+
+  // Extract address
+  let address = '';
+  // Pattern: 已到/到达/已放 + [address] + 请凭/请及时/取件码
+  const addrPatterns = [
+    /(?:已到|到达|已放)[于在]?([^，。；!！\n]{4,40})?(?:，请凭|，取件码|请凭|请及时|取件码|请联系)/,
+    /送到[了]?([^，。；\n]{4,40})(?:，请|。|,|，)/,
+    /放在[了]?([^，。；\n]{4,40})(?:，|。|,)/,
+    /驿站[：:]([^，。；\n]{4,40})/
+  ];
+  for (const pat of addrPatterns) {
+    const m = text.match(pat);
+    if (m && m[1]) { address = m[1].trim(); break; }
+  }
+  if (!address) {
+    const m = text.match(/(?:驿站|快递柜|营业点|服务站|代收点|门店|网点)([^，。；\n]{2,30})/);
+    if (m) address = (text.slice(Math.max(0,text.indexOf(m[0])-20), text.indexOf(m[0])+m[0].length).match(/(?:已到|在|位于)?(.{2,30}(?:驿站|快递柜|营业点|服务站|代收点|门店|网点).{0,20})/)?.[1] || m[0]);
+  }
+  if (!address) {
+    // Fallback: try to find location info
+    const sentences = text.split(/[。！！\n]/);
+    for (const s of sentences) {
+      if (s.includes('驿站')||s.includes('快递柜')||s.includes('营业点')||s.includes('服务站')||s.includes('快递')) {
+        address = s.replace(/^[【【\[\[].*?[】】\]\]\s]*/,'').trim().slice(0,40);
+        break;
+      }
+    }
+  }
+  if (!address && bracketMatch) {
+    // Use the text after bracket as hint
+    address = text.replace(/【.+?】/,'').trim().slice(0,30);
+  }
+
+  // Clean up address
+  address = address.replace(/^(已到|已送达|到达|已放|已放在)//g,'').trim();
+
+  // Show result
+  document.getElementById('parsePlatform').value = platform;
+  document.getElementById('parseCode').value = code || '未识别';
+  document.getElementById('parseAddress').value = address || '未识别';
+  document.getElementById('parseDesc').value = '';
+  document.getElementById('parseResult').classList.remove('hidden');
+
+  if (!code) showToast('未识别到取件码，请手动填写');
+  else showToast('✅ 已识别，请确认后添加');
+}
+
+function clearParse() {
+  document.getElementById('parseResult').classList.add('hidden');
+}
+
+function addParsed() {
+  const platform = document.getElementById('parsePlatform').value.trim();
+  const code = document.getElementById('parseCode').value.trim();
+  const address = document.getElementById('parseAddress').value.trim();
+  const desc = document.getElementById('parseDesc').value.trim();
+  if (!platform || !code || !address || code === '未识别' || address === '未识别') {
+    showToast('请完善信息后再添加');
+    return;
+  }
+  const pkg = {
+    id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    platform, pickupCode: code, address, description: desc,
+    arrivalDate: getToday(), createdAt: Date.now(), pickedUp: false
+  };
+  packages.unshift(pkg);
+  saveData();
+  clearParse();
+  document.getElementById('smsInput').value = '';
+  buildFilters();
+  renderHome();
+  showToast('✅ 已添加到待取件列表');
+}
+
+// ============ OCR ============
+async function handleOcrImage(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const preview = document.getElementById('ocrPreview');
+  const img = document.getElementById('ocrImage');
+  const status = document.getElementById('ocrStatus');
+  const reader = new FileReader();
+  reader.onload = async function(ev) {
+    img.src = ev.target.result;
+    preview.style.display = 'block';
+    status.style.display = 'flex';
+    status.innerHTML = '<div class="spinner"></div><span>正在识别中，请稍候...</span>';
+    try {
+      if (typeof Tesseract === 'undefined') {
+        status.innerHTML = '<span style="color:var(--danger)">⚠️ OCR 库加载失败，请检查网络</span>';
+        return;
+      }
+      const result = await Tesseract.recognize(ev.target.result, 'chi_sim+eng', {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            const pct = Math.round(m.progress * 100);
+            status.innerHTML = '<div class="spinner"></div><span>识别中 '+pct+'%...</span>';
+          }
+        }
+      });
+      status.style.display = 'none';
+      const text = result.data.text;
+      if (!text.trim()) {
+        status.style.display = 'flex';
+        status.innerHTML = '<span style="color:var(--warning)">⚠️ 未识别到文字，请尝试清晰截图</span>';
+        return;
+      }
+      // Fill SMS input with OCR result and parse
+      document.getElementById('smsInput').value = text.trim();
+      showToast('✅ 识别完成，点击"解析短信"提取信息');
+      // Auto scroll to SMS section
+      document.getElementById('smsInput').scrollIntoView({ behavior: 'smooth' });
+    } catch(err) {
+      status.style.display = 'flex';
+      status.innerHTML = '<span style="color:var(--danger)">⚠️ 识别失败: '+err.message+'</span>';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// ============ Bulk Import ============
+function bulkImport() {
+  document.getElementById('bulkModal').classList.add('open');
+}
+function closeBulkModal() {
+  document.getElementById('bulkModal').classList.remove('open');
+  document.getElementById('bulkInput').value = '';
+}
+function doBulkImport() {
+  const text = document.getElementById('bulkInput').value.trim();
+  if (!text) { showToast('请粘贴要导入的数据'); return; }
+  const lines = text.split('\n').filter(l=>l.trim());
+  let added = 0;
+  for (const line of lines) {
+    const parts = line.split('|').map(s=>s.trim());
+    if (parts.length < 2) continue;
+    const platform = parts[0], code = parts[1], addr = parts[2]||'', desc = parts[3]||'';
+    if (!platform||!code) continue;
+    packages.unshift({
+      id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      platform, pickupCode: code, address: addr, description: desc,
+      arrivalDate: getToday(), createdAt: Date.now(), pickedUp: false
+    });
+    added++;
+  }
+  if (added) {
+    saveData();
+    buildFilters();
+    renderHome();
+    closeBulkModal();
+    showToast('✅ 成功导入 '+added+' 个包裹');
+  } else {
+    showToast('未识别到有效数据，请检查格式');
+  }
+}
+
+// ============ Modal close on overlay ============
+document.getElementById('editModal').addEventListener('click', function(e){ if(e.target===this) closeEditModal(); });
+document.getElementById('confirmOverlay').addEventListener('click', function(e){ if(e.target===this) closeConfirm(); });
+document.getElementById('bulkModal').addEventListener('click', function(e){ if(e.target===this) closeBulkModal(); });
+
+// ============ Keyboard ============
+document.addEventListener('keydown', (e)=>{
+  if (e.key==='Escape') { closeEditModal(); closeConfirm(); closeBulkModal(); }
+});
+
+// ============ Start ============
+init();
+
+// ============ PWA Service Worker ============
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(function(reg) {
+    console.log('SW registered:', reg.scope);
+  }).catch(function(err) {
+    console.log('SW failed:', err);
+  });
+}
+</script>
+</body>
+</html>
