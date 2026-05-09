@@ -1155,9 +1155,15 @@ function copyCode(id, btn) {
 let toastTimer;
 function showToast(msg) {
   const el = document.getElementById('toast');
-  el.textContent = msg; el.classList.add('show');
+  if (!el) return;
+  el.style.display = 'flex';
+  el.textContent = msg;
+  el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>el.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => { el.style.display = ''; }, 300);
+  }, 2200);
 }
 
 // ============ SMS Parser ============
@@ -1175,93 +1181,79 @@ const PLATFORM_KEYWORDS = {
 };
 
 function parseSms() {
-  const text = document.getElementById('smsInput').value.trim();
+  try {
+  const smsEl = document.getElementById('smsInput');
+  if (!smsEl) { showToast('页面加载异常，请刷新'); return; }
+  const text = smsEl.value.trim();
   if (!text) { showToast('请先粘贴短信内容'); return; }
 
   // Detect platform
   let platform = '其他';
-  const fullText = text.toLowerCase();
-  for (const [name, keywords] of Object.entries(PLATFORM_KEYWORDS)) {
-    if (keywords.some(k => fullText.includes(k.toLowerCase()))) {
-      platform = name;
-      break;
+  var fullText = text.toLowerCase();
+  var pkeys = Object.keys(PLATFORM_KEYWORDS);
+  for (var pi = 0; pi < pkeys.length; pi++) {
+    var pname = pkeys[pi];
+    var pwords = PLATFORM_KEYWORDS[pname];
+    var matched = false;
+    for (var pj = 0; pj < pwords.length; pj++) {
+      if (fullText.indexOf(pwords[pj].toLowerCase()) !== -1) { matched = true; break; }
     }
+    if (matched) { platform = pname; break; }
   }
   // Also check brackets for platform name
-  const bracketMatch = text.match(/【(.+?)】/);
+  var bracketMatch = text.match(/【(.+?)】/);
   if (bracketMatch) {
-    const bracketed = bracketMatch[1];
-    for (const [name, keywords] of Object.entries(PLATFORM_KEYWORDS)) {
-      if (keywords.some(k => bracketed.includes(k))) {
-        platform = name;
-        break;
+    var bracketed = bracketMatch[1].toLowerCase();
+    for (var bi = 0; bi < pkeys.length; bi++) {
+      var bpname = pkeys[bi];
+      var bpwords = PLATFORM_KEYWORDS[bpname];
+      var bmatched = false;
+      for (var bj = 0; bj < bpwords.length; bj++) {
+        if (bracketed.indexOf(bpwords[bj].toLowerCase()) !== -1) { bmatched = true; break; }
       }
+      if (bmatched) { platform = bpname; break; }
     }
   }
 
   // Extract pickup code
-  let code = '';
-  // Pattern 1: "取件码" followed by numbers/dash
-  const codeMatch = text.match(/取件码[：:]\s*([\w\-]+)/);
+  var code = '';
+  var codeMatch = text.match(/取件码[：:]\s*([\w\-]+)/);
   if (codeMatch) code = codeMatch[1];
-  // Pattern 2: "取件码是"
+  if (!code) { var m1 = text.match(/取件码[是为]\s*([\w\-]+)/); if (m1) code = m1[1]; }
+  if (!code) { var m2 = text.match(/取件码\s*([\w\-]+)/); if (m2) code = m2[1]; }
   if (!code) {
-    const m = text.match(/取件码[是为]\s*([\w\-]+)/);
-    if (m) code = m[1];
+    var idx = text.indexOf('取件');
+    if (idx !== -1) { var after = text.slice(idx + 2, idx + 30); var m3 = after.match(/([\w\-]{3,})/); if (m3) code = m3[1]; }
   }
-  // Pattern 3: "取件码" nearby text with numbers
-  if (!code) {
-    const m = text.match(/取件码\s*([\w\-]+)/);
-    if (m) code = m[1];
-  }
-  // Pattern 4: general "code/number" pattern after 取件
-  if (!code) {
-    const idx = text.indexOf('取件');
-    if (idx !== -1) {
-      const after = text.slice(idx + 2, idx + 30);
-      const m = after.match(/([\w\-]{3,})/);
-      if (m) code = m[1];
-    }
-  }
-  // Pattern 5: standalone number groups (last resort for SMS)
-  if (!code) {
-    const m = text.match(/\b(\d{4,})\b/);
-    if (m) code = m[1];
-  }
+  if (!code) { var m4 = text.match(/\b(\d{4,})\b/); if (m4) code = m4[1]; }
 
   // Extract address
-  let address = '';
-  // Pattern: 已到/到达/已放 + [address] + 请凭/请及时/取件码
-  const addrPatterns = [
+  var address = '';
+  var addrPatterns = [
     /(?:已到|到达|已放)[于在]?([^，。；!！\n]{4,40})?(?:，请凭|，取件码|请凭|请及时|取件码|请联系)/,
     /送到[了]?([^，。；\n]{4,40})(?:，请|。|,|，)/,
     /放在[了]?([^，。；\n]{4,40})(?:，|。|,)/,
     /驿站[：:]([^，。；\n]{4,40})/
   ];
-  for (const pat of addrPatterns) {
-    const m = text.match(pat);
-    if (m && m[1]) { address = m[1].trim(); break; }
+  for (var ai = 0; ai < addrPatterns.length; ai++) {
+    var am = text.match(addrPatterns[ai]);
+    if (am && am[1]) { address = am[1].trim(); break; }
   }
   if (!address) {
-    const m = text.match(/(?:驿站|快递柜|营业点|服务站|代收点|门店|网点)([^，。；\n]{2,30})/);
-    if (m) address = (text.slice(Math.max(0,text.indexOf(m[0])-20), text.indexOf(m[0])+m[0].length).match(/(?:已到|在|位于)?(.{2,30}(?:驿站|快递柜|营业点|服务站|代收点|门店|网点).{0,20})/)?.[1] || m[0]);
+    var locM = text.match(/(?:驿站|快递柜|营业点|服务站|代收点|门店|网点)([^，。；\n]{2,30})/);
+    if (locM) address = (text.slice(Math.max(0,text.indexOf(locM[0])-20), text.indexOf(locM[0])+locM[0].length).match(/(?:已到|在|位于)?(.{2,30}(?:驿站|快递柜|营业点|服务站|代收点|门店|网点).{0,20})/)?.[1] || locM[0]);
   }
   if (!address) {
-    // Fallback: try to find location info
-    const sentences = text.split(/[。！！\n]/);
-    for (const s of sentences) {
-      if (s.includes('驿站')||s.includes('快递柜')||s.includes('营业点')||s.includes('服务站')||s.includes('快递')) {
+    var sentences = text.split(/[。！！\n]/);
+    for (var si = 0; si < sentences.length; si++) {
+      var s = sentences[si];
+      if (s.indexOf('驿站')!==-1||s.indexOf('快递柜')!==-1||s.indexOf('营业点')!==-1||s.indexOf('服务站')!==-1||s.indexOf('快递')!==-1) {
         address = s.replace(/^[【【\[\[].*?[】】\]\]\s]*/,'').trim().slice(0,40);
         break;
       }
     }
   }
-  if (!address && bracketMatch) {
-    // Use the text after bracket as hint
-    address = text.replace(/【.+?】/,'').trim().slice(0,30);
-  }
-
-  // Clean up address
+  if (!address && bracketMatch) { address = text.replace(/【.+?】/,'').trim().slice(0,30); }
   address = address.replace(/^(已到|已送达|到达|已放|已放在)//g,'').trim();
 
   // Show result
@@ -1274,6 +1266,7 @@ function parseSms() {
 
   if (!code) showToast('未识别到取件码，请手动填写');
   else showToast('已识别，请确认后添加');
+  } catch(e) { showToast('解析出错: ' + e.message); }
 }
 
 function clearParse() {
