@@ -1254,7 +1254,7 @@ function parseSms() {
     }
   }
   if (!address && bracketMatch) { address = text.replace(/【.+?】/,'').trim().slice(0,30); }
-  address = address.replace(/^(已到|已送达|到达|已放|已放在)//g,'').trim();
+  address = address.replace(/^(已到|已送达|到达|已放|已放在)/g,'').trim();
 
   // Show result
   document.getElementById('parsePlatform').value = platform;
